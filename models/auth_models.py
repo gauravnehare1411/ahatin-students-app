@@ -1,7 +1,7 @@
 from pydantic import BaseModel, EmailStr, field_validator
 from typing import Optional, List
 
-ALLOWED_ROLES = {"user", "admin"}
+ALLOWED_ROLES = {"student", "admin"}
 
 class Token(BaseModel):
     access_token: str
@@ -10,7 +10,6 @@ class Token(BaseModel):
     expires_in: int
     roles: List[str]
 
-
 class TokenData(BaseModel):
     email: EmailStr | None = None
     roles: List[str] = []
@@ -18,13 +17,12 @@ class TokenData(BaseModel):
 class RefreshTokenRequest(BaseModel):
     refresh_token: str
 
-
 class RegisterUser(BaseModel):
     name: str | None = None
     email: EmailStr
     contactnumber: str | None = None
     password: str
-    roles: List[str]
+    roles: List[str] = ["student"]
 
 
 class User(BaseModel):
