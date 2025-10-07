@@ -57,7 +57,7 @@ async def get_user(email: str):
     if user_dict:
         user_dict["hashed_password"] = user_dict.get("password")
         
-        user_dict["userId"] = user_dict.get("_id")
+        user_dict["userId"] = user_dict.get("userId")
         
         if "roles" in user_dict and not isinstance(user_dict["roles"], list):
             user_dict["roles"] = [user_dict["roles"]]

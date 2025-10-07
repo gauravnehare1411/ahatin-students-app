@@ -71,8 +71,7 @@ async def start_registration(request: RegisterUser, background_tasks: Background
             status_code=500, 
             detail="An error occurred during registration. Please try again."
         )
-    
-#=======================
+ 
 
 @router.post("/verify-code", response_model=Token)
 async def verify_code(
@@ -156,8 +155,7 @@ async def verify_code(
             status_code=500, 
             detail="An error occurred during verification. Please try again."
         )
-
-#=======================
+    
 
 @router.post("/login")
 async def login(
@@ -182,7 +180,6 @@ async def login(
         roles=user.roles
     )
 
-#=======================
 
 @router.post("/token/refresh", response_model=Token)
 async def refresh_access_token(request: RefreshTokenRequest):
@@ -216,7 +213,6 @@ async def refresh_access_token(request: RefreshTokenRequest):
     except JWTError:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
 
-#=======================
 
 @router.post("/resend-code")
 async def resend_code(request: EmailOnlyRequest, background_tasks: BackgroundTasks):

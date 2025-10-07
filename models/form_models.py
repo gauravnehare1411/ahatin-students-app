@@ -56,3 +56,6 @@ class ApplicationForm(BaseModel):
     certifications: Certifications
     workExperience: WorkExperience
     financialInformation: FinancialInformation
+
+class StatusUpdate(BaseModel):
+    status: str

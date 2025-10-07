@@ -4,6 +4,9 @@ from models.auth_models import User
 from config.db import applications_collection
 from schemas.auth_schema import get_current_user
 import uuid
+from datetime import timezone, timedelta, datetime
+
+IST = timezone(timedelta(hours=5, minutes=30))
 
 router = APIRouter()
 
@@ -13,6 +16,10 @@ async def submit_application(data: ApplicationForm, current_user: User=Depends(g
         form_dict = data.dict()
         form_dict["applicationId"] = str(uuid.uuid4())
         form_dict["userId"] = current_user.userId
+        form_dict["status"] = "Submitted"
+        form_dict["updatedAt"] = datetime.now(IST).isoformat()
+        form_dict["submitted_at"] = datetime.now(IST).isoformat()
+
         result = await applications_collection.insert_one(form_dict)
         return {"message": "Application saved successfully", "id": str(result.inserted_id)}
     
@@ -35,7 +42,7 @@ async def get_student_applications(current_user: User=Depends(get_current_user))
 @router.get('/applications/{application_id}')
 async def get_application_with_id(application_id: str, current_user: User=Depends(get_current_user)):
      try:
-        application = await applications_collection.find_one({"userId": current_user.userId, 'applicationId': application_id})
+        application = await applications_collection.find_one({'applicationId': application_id})
         application['_id'] = str(application["_id"])
         return application
      except:
