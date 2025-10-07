@@ -6,7 +6,7 @@ from schemas.auth_schema import get_current_user
 router = APIRouter()
 
 @router.get('/user', response_model=User)
-async def get_user_me(
+async def get_user_profile(
     current_user: Annotated[User, Depends(get_current_user)]
 ):
     return current_user

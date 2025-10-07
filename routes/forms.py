@@ -1,8 +1,9 @@
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, status
 from models.form_models import ApplicationForm
 from models.auth_models import User
 from config.db import applications_collection
 from schemas.auth_schema import get_current_user
+import uuid
 
 router = APIRouter()
 
@@ -10,10 +11,35 @@ router = APIRouter()
 async def submit_application(data: ApplicationForm, current_user: User=Depends(get_current_user)):
     try:
         form_dict = data.dict()
+        form_dict["applicationId"] = str(uuid.uuid4())
         form_dict["userId"] = current_user.userId
         result = await applications_collection.insert_one(form_dict)
         return {"message": "Application saved successfully", "id": str(result.inserted_id)}
     
     except Exception as e:
-        print("Error:", e)
         raise HTTPException(status_code=500, detail="Failed to save application")
+    
+@router.get('/student/applications')
+async def get_student_applications(current_user: User=Depends(get_current_user)):
+    try:
+        applications = await applications_collection.find({"userId": current_user.userId}).to_list(length=None)
+        for app in applications:
+                app["_id"] = str(app["_id"])
+
+        return applications
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching applications: {str(e)}")
+    
+
+@router.get('/applications/{application_id}')
+async def get_application_with_id(application_id: str, current_user: User=Depends(get_current_user)):
+     try:
+        application = await applications_collection.find_one({"userId": current_user.userId, 'applicationId': application_id})
+        application['_id'] = str(application["_id"])
+        return application
+     except:
+         raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Application not found"
+        )
