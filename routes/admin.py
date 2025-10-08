@@ -1,7 +1,7 @@
-from fastapi import APIRouter, HTTPException, Depends, Query, status as http_status
+from fastapi import APIRouter, HTTPException, Depends, Query, status as http_status, Path
 from bson import ObjectId
 from config.db import users_collection, applications_collection
-from models.form_models import StatusUpdate
+from models.form_models import StatusUpdate, ApplicationForm
 from schemas.auth_schema import requires_roles
 from datetime import datetime
 from typing import Optional
@@ -94,3 +94,22 @@ async def update_application_status(application_id: str, payload: dict):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+    
+@router.put("/application/{application_id}/edit")
+async def update_application(
+    application_id: str = Path(...),
+    application: ApplicationForm = None
+):
+    existing = await applications_collection.find_one({"applicationId": application_id})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Application not found")
+    
+    updated_data = application.dict()
+    updated_data["updated_at"] = datetime.utcnow().isoformat()
+
+    await applications_collection.update_one(
+        {"applicationId": application_id},
+        {"$set": updated_data}
+    )
+
+    return {"message": "Application updated successfully"}
