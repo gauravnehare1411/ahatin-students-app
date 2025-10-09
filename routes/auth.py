@@ -21,8 +21,6 @@ async def start_registration(request: RegisterUser, background_tasks: Background
     """
     try:
         request.email = request.email.lower()
-        print(request)
-        # Validate roles
         for role in request.roles:
             if role.lower() not in ALLOWED_ROLES:
                 raise HTTPException(
@@ -41,7 +39,6 @@ async def start_registration(request: RegisterUser, background_tasks: Background
 
         verification_code = str(random.randint(100000, 999999))
 
-        # Store verification data
         verification_data = {
             "_id": request.email,
             "name": request.name,
