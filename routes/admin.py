@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends, Query, status as http_status, Path
 from bson import ObjectId
-from config.db import users_collection, applications_collection
+from config.db import users_collection, applications_collection, deleted_users_collection
 from models.form_models import StatusUpdate, ApplicationForm
 from schemas.auth_schema import requires_roles
 from datetime import datetime
@@ -46,12 +46,21 @@ async def update_user(user_id: str, body: dict):
         raise HTTPException(status_code=404, detail="User not found")
     return fix_id(user)
 
+
 @router.delete("/student/{user_id}")
 async def delete_user(user_id: str):
+    user = await users_collection.find_one({"userId": user_id})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    user["deletedAt"] = datetime.utcnow()
+    await deleted_users_collection.insert_one(user)
+
     result = await users_collection.delete_one({"userId": user_id})
     if result.deleted_count == 0:
-        raise HTTPException(status_code=404, detail="User not found")
-    return {"message": "User deleted"}
+        raise HTTPException(status_code=500, detail="Failed to delete user")
+
+    return {"message": "User deleted and moved to deleted_users collection"}
 
 
 @router.get("/student/applications/{userId}")

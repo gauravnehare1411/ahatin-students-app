@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, Depends, status
 from models.form_models import ApplicationForm
 from models.auth_models import User
-from config.db import applications_collection
+from config.db import applications_collection, deleted_applications_collection
 from schemas.auth_schema import get_current_user
 import uuid
 from datetime import timezone, timedelta, datetime
@@ -50,3 +50,19 @@ async def get_application_with_id(application_id: str, current_user: User=Depend
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Application not found"
         )
+
+@router.delete('/applications/{application_id}')
+async def delete_application(application_id: str, current_user: User = Depends(get_current_user)):
+    application = await applications_collection.find_one({'applicationId': application_id})
+    if not application:
+        raise HTTPException(status_code=404, detail="Application not found")
+    
+    application['deletedAt'] = datetime.utcnow()
+    await deleted_applications_collection.insert_one(application)
+    
+    result = await applications_collection.delete_one({'applicationId': application_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=500, detail="Failed to delete application")
+    
+    return {"message": "Application deleted and moved to deleted_applications collection"}
+     
