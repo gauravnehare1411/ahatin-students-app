@@ -17,11 +17,16 @@ class TokenData(BaseModel):
 class RefreshTokenRequest(BaseModel):
     refresh_token: str
 
+class SecurityModel(BaseModel):
+    first_school: str
+    date_of_birth: str
+
 class RegisterUser(BaseModel):
     name: str | None = None
     email: EmailStr
     contactnumber: str | None = None
     password: str
+    security_questions: SecurityModel
     roles: List[str] = ["student"]
 
 
@@ -42,3 +47,15 @@ class UserUpdate(BaseModel):
 
 class EmailOnlyRequest(BaseModel):
     email: EmailStr
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+class SecurityQuestionsVerify(BaseModel):
+    email: EmailStr
+    first_school: str
+    dob: str
+
+class ResetPasswordRequest(BaseModel):
+    email: EmailStr
+    new_password: str

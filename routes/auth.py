@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, Form
 from fastapi.security import OAuth2PasswordRequestForm
 from typing import Annotated
-from models.auth_models import Token, RefreshTokenRequest, RegisterUser, ALLOWED_ROLES, EmailOnlyRequest
+from models.auth_models import Token, RefreshTokenRequest, RegisterUser, ALLOWED_ROLES, ForgotPasswordRequest, SecurityQuestionsVerify, ResetPasswordRequest
 from schemas.auth_schema import authenticate_user, ACCESS_TOKEN_EXPIRE_SECONDS, REFRESH_TOKEN_EXPIRE_DAYS, generate_tokens, hash_password
 from datetime import datetime, timedelta
 from jose import JWTError
@@ -14,11 +14,8 @@ import uuid
 
 router = APIRouter(tags=["Authentication"])
 
-@router.post("/register", response_model=dict, status_code=status.HTTP_202_ACCEPTED)
-async def start_registration(request: RegisterUser, background_tasks: BackgroundTasks):
-    """
-    Start user registration process by sending verification code
-    """
+@router.post("/register", response_model=Token, status_code=status.HTTP_202_ACCEPTED)
+async def start_registration(request: RegisterUser):
     try:
         request.email = request.email.lower()
         for role in request.roles:
@@ -34,32 +31,36 @@ async def start_registration(request: RegisterUser, background_tasks: Background
                 status_code=400,
                 detail=f"User already exist."
             )
+        print(hash_password(request.password))
 
-        await verification_collection.delete_one({"_id": request.email})
-
-        verification_code = str(random.randint(100000, 999999))
-
-        verification_data = {
-            "_id": request.email,
+        user_dict = {
+            "_id": str(uuid.uuid4()),
+            "userId": str(uuid.uuid4()),
             "name": request.name,
+            "email": request.email,
             "contactnumber": request.contactnumber,
             "password": hash_password(request.password),
-            "code": verification_code,
             "roles": request.roles,
-            "expires_at": datetime.utcnow() + timedelta(minutes=5),
-            "created_at": datetime.utcnow()
+            "security_questions": {
+                "first_school": request.security_questions.first_school,
+                "dob": request.security_questions.date_of_birth
+            },
+            "created_at": datetime.utcnow(),
+            "updated_at": datetime.utcnow(),
+            "is_active": True
         }
+        
+        await users_collection.insert_one(user_dict)
 
-        await verification_collection.insert_one(verification_data)
+        access_token, refresh_token = generate_tokens(request.email, request.roles)
 
-        # Send verification email in background
-        background_tasks.add_task(send_verification_email, request.email, verification_code)
-
-        return {
-            "message": "Verification code sent to your email.",
-            "email": request.email,
-            "expires_in": "5 minutes"
-        }
+        return Token(
+            access_token=access_token,
+            refresh_token=refresh_token,
+            token_type="bearer",
+            expires_in=ACCESS_TOKEN_EXPIRE_SECONDS,
+            roles=request.roles
+        )
 
     except HTTPException:
         raise
@@ -67,90 +68,6 @@ async def start_registration(request: RegisterUser, background_tasks: Background
         raise HTTPException(
             status_code=500, 
             detail="An error occurred during registration. Please try again."
-        )
- 
-
-@router.post("/verify-code", response_model=Token)
-async def verify_code(
-    email: str = Form(..., description="User email address"),
-    code: str = Form(..., description="6-digit verification code")
-):
-    try:
-        email = email.lower()
-        verification = await verification_collection.find_one({"_id": email})
-
-        if not verification:
-            raise HTTPException(
-                status_code=400, 
-                detail="No verification request found. Please register first."
-            )
-
-        if verification["code"] != code:
-            raise HTTPException(
-                status_code=400, 
-                detail="Invalid verification code."
-            )
-
-        if verification["expires_at"] < datetime.utcnow():
-            await verification_collection.delete_one({"_id": email})
-            raise HTTPException(
-                status_code=400, 
-                detail="Verification code has expired. Please request a new one."
-            )
-
-        existing_user = await users_collection.find_one({"email": email})
-        
-        if existing_user:
-            raise HTTPException(
-                status_code=400,
-                detail="User already registered with this email."
-            )
-        
-        else:
-            user_data = {
-                "_id": str(uuid.uuid4()),
-                "userId": str(uuid.uuid4()),
-                "name": verification["name"],
-                "email": email,
-                "contactnumber": verification["contactnumber"],
-                "password": verification["password"],
-                "roles": verification["roles"],
-                "created_at": datetime.utcnow(),
-                "updated_at": datetime.utcnow(),
-                "is_active": True,
-                "email_verified": True
-            }
-            await users_collection.insert_one(user_data)
-
-        # Clean up verification data
-        await verification_collection.delete_one({"_id": email})
-
-        user = await users_collection.find_one({"email": email})
-
-        if not user:
-            print("err")
-            raise HTTPException(status_code=500, detail="User creation failed.")
-
-        roles = user.get("roles", [])
-        user_id = user.get("userId")
-
-        access_token, refresh_token = generate_tokens(user.get('email'), roles)
-
-        return Token(
-            access_token=access_token,
-            refresh_token=refresh_token,
-            token_type="bearer",
-            expires_in=ACCESS_TOKEN_EXPIRE_SECONDS,
-            roles=roles,
-            user_id=user_id
-        )
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, 
-            detail="An error occurred during verification. Please try again."
         )
     
 
@@ -211,28 +128,44 @@ async def refresh_access_token(request: RefreshTokenRequest):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
 
 
-@router.post("/resend-code")
-async def resend_code(request: EmailOnlyRequest, background_tasks: BackgroundTasks):
-    try:
-        request.email = request.email.lower()
+from fastapi import HTTPException, status
 
-        existing = await verification_collection.find_one({"_id": request.email})
-        if not existing:
-            raise HTTPException(status_code=400, detail="No verification request found. Please register again.")
-
-        if datetime.utcnow() <= existing["expires_at"]:
-            raise HTTPException(status_code=400, detail="OTP is still valid. Please check your email.")
-
-        new_code = str(random.randint(100000, 999999))
-        await verification_collection.update_one(
-            {"_id": request.email},
-            {"$set": {"code": new_code, "expires_at": datetime.utcnow() + timedelta(minutes=5)}}
+@router.post("/forgot-password")
+async def forgot_password(request: ForgotPasswordRequest):
+    email = request.email.lower()
+    user = await users_collection.find_one({"email": email})
+    if not user:
+        raise HTTPException(
+            status_code=404,
+            detail="User with this email does not exist."
         )
+    
+    return {"message": "User found. Please answer security questions."}
 
-        background_tasks.add_task(send_verification_email, request.email, new_code)
-        return {"message": "A new verification code has been sent."}
+@router.post("/verify-security-questions")
+async def verify_security_questions(request: SecurityQuestionsVerify):
+    email = request.email.lower()
+    user = await users_collection.find_one({"email": email})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found.")
 
-    except HTTPException as he:
-        raise he
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
+    if (user["security_questions"]["first_school"].lower() != request.first_school.lower()
+        or user["security_questions"]["dob"] != request.dob):
+        raise HTTPException(status_code=400, detail="Incorrect security answers.")
+
+    return {"message": "Security questions verified. You can reset your password."}
+
+@router.post("/reset-password")
+async def reset_password(request: ResetPasswordRequest):
+    email = request.email.lower()
+    hashed_password = hash_password(request.new_password)
+
+    result = await users_collection.update_one(
+        {"email": email},
+        {"$set": {"password": hashed_password, "updated_at": datetime.utcnow()}}
+    )
+
+    if result.modified_count == 0:
+        raise HTTPException(status_code=400, detail="Password reset failed.")
+    
+    return {"message": "Password has been successfully reset."}
